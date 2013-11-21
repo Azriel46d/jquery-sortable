@@ -27,6 +27,7 @@
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * ========================================================== */
 
+
 !function ( $, window, undefined){
   var eventNames,
   pluginName = 'sortable',
@@ -67,11 +68,11 @@
     },
     // Executed before onDrop if placeholder is detached.
     // This happens if pullPlaceholder is set to false and the drop occurs outside a container.
-    onCancel: function ($item, container, _super, event) {
+    onCancel: function ($item, container, _super) {
     },
     // Executed at the beginning of a mouse move event.
     // The Placeholder has not been moved yet.
-    onDrag: function ($item, position, _super, event) {
+    onDrag: function ($item, position, _super) {
       $item.css(position)
     },
     // Called after the drag has been started,
@@ -79,7 +80,7 @@
     // the mouse is moving.
     // The container is the closest initialized container.
     // Therefore it might not be the container, that actually contains the item.
-    onDragStart: function ($item, container, _super, event) {
+    onDragStart: function ($item, container, _super) {
       $item.css({
         height: $item.height(),
         width: $item.width()
@@ -88,14 +89,13 @@
       $("body").addClass("dragging")
     },
     // Called when the mouse button is beeing released
-    onDrop: function ($item, container, _super, event) {
+    onDrop: function ($item, container, _super) {
       $item.removeClass("dragged").removeAttr("style")
       $("body").removeClass("dragging")
     },
-    // Called on mousedown. If falsy value is returned, the dragging will not start.
-    onMousedown: function($item, _super, event) {
+    // Called on mousedown.
+    onMousedown: function($item, event, _super) {
       event.preventDefault()
-      return true
     },
     // Template for the placeholder. Can be any valid jQuery input
     // e.g. a string, a DOM element.
@@ -134,9 +134,9 @@
     right:0
   }
   eventNames = {
-    start: "touchstart.sortable mousedown.sortable",
-    drop: "touchend.sortable touchcancel.sortable mouseup.sortable",
-    drag: "touchmove.sortable mousemove.sortable",
+    start: "dragstart",// touchstart.sortable mousedown.sortable",
+    drop: "dragend",// touchcancel.sortable mouseup.sortable",
+    drag: "drag ",//touchmove.sortable mousemove.sortable",
     scroll: "scroll.sortable"
   }
 
@@ -199,15 +199,14 @@
   }
 
   function ContainerGroup(options) {
-    this.options = $.extend({}, groupDefaults, options)
+	this.options = $.extend({}, groupDefaults, options)
     this.containers = []
+    this.scrollProxy = $.proxy(this.scroll, this)
+    this.dragProxy = $.proxy(this.drag, this)
+    this.dropProxy = $.proxy(this.drop, this)
 
     if(!this.options.parentContainer){
-      this.scrollProxy = $.proxy(this.scroll, this)
-      this.dragProxy = $.proxy(this.drag, this)
-      this.dropProxy = $.proxy(this.drop, this)
       this.placeholder = $(this.options.placeholder)
-      
       if(!options.isValidTarget)
         this.options.isValidTarget = undefined
     }
@@ -224,18 +223,19 @@
 
   ContainerGroup.prototype = {
     dragInit: function  (e, itemContainer) {
+	 
       this.$document = $(itemContainer.el[0].ownerDocument)
 
       if(itemContainer.enabled()){
+	    this.toggleListeners('on')
+
         // get item to drag
         this.item = $(e.target).closest(this.options.itemSelector)
         this.itemContainer = itemContainer
 
-        if(!this.options.onMousedown(this.item, groupDefaults.onMousedown, e))
-          return
-
         this.setPointer(e)
-        this.toggleListeners('on')
+
+        this.options.onMousedown(this.item, e, groupDefaults.onMousedown)
       } else {
         this.toggleListeners('on', ['drop'])
       }
@@ -243,11 +243,13 @@
       this.dragInitDone = true
     },
     drag: function  (e) {
-      if(!this.dragging){
+	  e.gesture.preventDefault();
+	   
+	  if(!this.dragging){
         if(!this.distanceMet(e))
           return
 
-        this.options.onDragStart(this.item, this.itemContainer, groupDefaults.onDragStart, e)
+        this.options.onDragStart(this.item, this.itemContainer, groupDefaults.onDragStart)
         this.item.before(this.placeholder)
         this.dragging = true
       }
@@ -256,14 +258,13 @@
       // place item under the cursor
       this.options.onDrag(this.item,
                           getRelativePosition(this.pointer, this.item.offsetParent()),
-                          groupDefaults.onDrag,
-                          e)
+                          groupDefaults.onDrag)
 
-      var x = e.pageX,
-      y = e.pageY,
+      var x = e.gesture.touches[0].pageX,
+      y = e.gesture.touches[0].pageY,
       box = this.sameResultBox,
       t = this.options.tolerance
-
+		
       if(!box || box.top - t > y || box.bottom + t < y || box.left - t > x || box.right + t < x)
         if(!this.searchValidTarget())
           this.placeholder.detach()
@@ -278,9 +279,9 @@
         if(this.placeholder.closest("html")[0])
           this.placeholder.before(this.item).detach()
         else
-          this.options.onCancel(this.item, this.itemContainer, groupDefaults.onCancel, e)
+          this.options.onCancel(this.item, this.itemContainer, groupDefaults.onCancel)
 
-        this.options.onDrop(this.item, this.getContainer(this.item), groupDefaults.onDrop, e)
+        this.options.onDrop(this.item, this.getContainer(this.item), groupDefaults.onDrop)
 
         // cleanup
         this.clearDimensions()
@@ -362,8 +363,8 @@
     },
     setPointer: function (e) {
       var pointer = {
-        left: e.pageX,
-        top: e.pageY
+        left: e.gesture.touches[0].pageX,
+        top: e.gesture.touches[0].pageY
       }
 
       if(this.$getOffsetParent()){
@@ -377,8 +378,8 @@
     },
     distanceMet: function (e) {
       return (Math.max(
- 				Math.abs(this.pointer.left - e.pageX),
-				Math.abs(this.pointer.top - e.pageY)
+ 				Math.abs(this.pointer.left - e.gesture.touches[0].pageX),
+				Math.abs(this.pointer.top - e.gesture.touches[0].pageY)
 			) >= this.options.distance)
     },
     scroll: function  (e) {
@@ -390,7 +391,8 @@
       events = events || ['drag','drop','scroll']
 
       $.each(events,function  (i,event) {
-        that.$document[method](eventNames[event], that[event + 'Proxy'])
+	  
+		that.$document[method](eventNames[event], that[event + 'Proxy'])
       })
     },
     clearOffsetParent: function () {
@@ -403,11 +405,6 @@
       while(i--){
         this.containers[i].clearDimensions()
       }
-    },
-    destroy: function () {
-      // TODO iterate over subgroups and destroy them
-      // TODO remove all events
-      containerGroups[this.options.group] = undefined
     }
   }
 
@@ -416,14 +413,11 @@
     this.options = $.extend( {}, containerDefaults, options)
 
     this.group = ContainerGroup.get(this.options)
-    this.rootGroup = this.options.rootGroup || this.group
+    this.rootGroup = this.options.rootGroup = this.options.rootGroup || this.group
     this.parentContainer = this.options.parentContainer
     this.handle = this.rootGroup.options.handle || this.rootGroup.options.itemSelector
-
-    var itemPath = this.rootGroup.options.itemPath,
-    target = itemPath ? this.el.find(itemPath) : this.el
-
-    target.on(eventNames.start, this.handle, $.proxy(this.dragInit, this))
+    this.el.hammer().on(eventNames.start, this.handle, $.proxy(this.dragInit, this))
+	
 
     if(this.options.drop)
       this.group.containers.push(this)
@@ -432,9 +426,10 @@
   Container.prototype = {
     dragInit: function  (e) {
       var rootGroup = this.rootGroup
-
+	  
+	  
       if( !rootGroup.dragInitDone &&
-          e.which === 1 &&
+          //e.which === 0 &&
           this.options.drag &&
           !$(e.target).is(this.options.exclude))
         rootGroup.dragInit(e, this)
@@ -530,7 +525,6 @@
         if(childContainers[0]){
           var options = $.extend({}, this.options, {
             parentContainer: this,
-            rootGroup: this.rootGroup,
             group: groupCounter ++
           })
           childGroup = childContainers[pluginName](options).data(pluginName).group
@@ -585,9 +579,6 @@
     },
     serialize: function () {
       return this._serialize(this.el, true)
-    },
-    destroy: function () {
-      this.rootGroup.destroy()
     }
   }
 
@@ -618,3 +609,4 @@
   };
 
 }(jQuery, window)
+;
